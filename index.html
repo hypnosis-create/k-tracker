@@ -754,12 +754,12 @@ async function loadMaster() {
   const catOptions = categories.map(c => `<option value="${c.id}">${c.icon||''} ${c.name}</option>`).join('');
   document.getElementById('master-list').innerHTML = keywordMaster.length ?
     keywordMaster.map(k => `<div class="master-item" style="gap:8px;">
-      <input id="kw-text-${k.id}" value="${k.keyword}" style="flex:1;min-width:100px;font-size:12px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);">
-      <select id="kw-cat-${k.id}" style="font-size:12px;padding:4px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+      <input id="kw-text-${k.id}" value="${k.keyword}" style="flex:2;min-width:120px;font-size:12px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+      <select id="kw-cat-${k.id}" style="width:160px;flex-shrink:0;font-size:12px;padding:4px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);">
         ${categories.map(c => `<option value="${c.id}" ${c.id === k.category_id ? 'selected' : ''}>${c.icon||''} ${c.name}</option>`).join('')}
       </select>
-      <button class="btn btn-ghost btn-sm" onclick="updateKeyword(${k.id})">保存</button>
-      <button class="btn btn-danger btn-sm" onclick="deleteKeyword(${k.id})">削除</button>
+      <button class="btn btn-ghost btn-sm" style="flex-shrink:0;" onclick="updateKeyword(${k.id})">保存</button>
+      <button class="btn btn-danger btn-sm" style="flex-shrink:0;" onclick="deleteKeyword(${k.id})">削除</button>
     </div>`).join('') :
     '<div class="empty">登録なし</div>';
 }
