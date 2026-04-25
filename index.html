@@ -326,18 +326,45 @@
 
 <!-- マスタ管理 -->
 <div id="page-master" class="page">
-  <div class="form-card">
-    <div class="form-title">キーワード→カテゴリ 登録</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <input type="text" id="kw-input" placeholder="例：沖縄電力" style="flex:1;min-width:140px;">
-      <select id="kw-cat" style="flex:1;min-width:140px;"></select>
-      <button class="btn btn-primary" onclick="saveKeyword()">登録</button>
+
+  <!-- タブ切替 -->
+  <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:0;">
+    <button class="nav-tab active" id="mtab-kw" onclick="switchMasterTab('kw',this)" style="font-size:12px;">キーワードマスタ</button>
+    <button class="nav-tab" id="mtab-cat" onclick="switchMasterTab('cat',this)" style="font-size:12px;">カテゴリマスタ</button>
+  </div>
+
+  <!-- キーワードマスタ -->
+  <div id="master-kw-section">
+    <div class="form-card">
+      <div class="form-title">キーワード→カテゴリ 登録</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input type="text" id="kw-input" placeholder="例：沖縄電力" style="flex:1;min-width:140px;">
+        <select id="kw-cat" style="flex:1;min-width:140px;"></select>
+        <button class="btn btn-primary" onclick="saveKeyword()">登録</button>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-header"><span class="table-title">登録済みキーワード</span><button class="btn btn-primary btn-sm" onclick="applyMasterToAll()">📦 既存データに一括適用</button></div>
+      <div id="master-list"></div>
     </div>
   </div>
-  <div class="table-card">
-    <div class="table-header"><span class="table-title">登録済みキーワード</span><button class="btn btn-primary btn-sm" onclick="applyMasterToAll()">📦 既存データに一括適用</button></div>
-    <div id="master-list"></div>
+
+  <!-- カテゴリマスタ -->
+  <div id="master-cat-section" style="display:none;">
+    <div class="form-card">
+      <div class="form-title">カテゴリ追加</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input type="text" id="cat-icon-input" placeholder="絵文字（例：🏋）" style="width:80px;">
+        <input type="text" id="cat-name-input" placeholder="カテゴリ名" style="flex:1;min-width:140px;">
+        <button class="btn btn-primary" onclick="addCategory()">追加</button>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-header"><span class="table-title">カテゴリ一覧</span><span style="font-size:11px;color:var(--text3);">↑↓で並び順変更</span></div>
+      <div id="cat-master-list"></div>
+    </div>
   </div>
+
 </div>
 
 </main>
@@ -739,6 +766,90 @@ async function deleteKeyword(id) {
   await sb.from('keyword_master').delete().eq('id', id);
   toast('削除しました');
   loadMaster();
+}
+
+// マスタタブ切替
+function switchMasterTab(tab, el) {
+  document.querySelectorAll('#page-master .nav-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('master-kw-section').style.display = tab === 'kw' ? 'block' : 'none';
+  document.getElementById('master-cat-section').style.display = tab === 'cat' ? 'block' : 'none';
+  if (tab === 'cat') loadCategoryMaster();
+}
+
+// カテゴリマスタ読み込み
+async function loadCategoryMaster() {
+  const { data } = await sb.from('categories').select('*').order('sort_order');
+  const list = document.getElementById('cat-master-list');
+  list.innerHTML = (data||[]).map((c, i) => `
+    <div class="master-item" id="catrow-${c.id}" draggable="true"
+      ondragstart="dragStart(event,${c.id})" ondragover="dragOver(event)" ondrop="dragDrop(event,${c.id})">
+      <span style="cursor:grab;color:var(--text3);margin-right:8px;">⠿</span>
+      <input id="icon-${c.id}" value="${c.icon||''}" style="width:48px;font-size:16px;text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px;color:var(--text);">
+      <input id="name-${c.id}" value="${c.name}" style="flex:1;margin:0 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;color:var(--text);">
+      <button class="btn btn-ghost btn-sm" onclick="updateCategory(${c.id})">保存</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteCategory(${c.id})" style="margin-left:4px;">削除</button>
+    </div>
+  `).join('') || '<div class="empty">カテゴリなし</div>';
+}
+
+// カテゴリ追加
+async function addCategory() {
+  const icon = document.getElementById('cat-icon-input').value.trim();
+  const name = document.getElementById('cat-name-input').value.trim();
+  if (!name) { toast('カテゴリ名を入力してください', false); return; }
+  const { data: existing } = await sb.from('categories').select('sort_order').order('sort_order', { ascending: false }).limit(1);
+  const nextOrder = (existing?.[0]?.sort_order || 0) + 1;
+  const { error } = await sb.from('categories').insert({ name, icon, sort_order: nextOrder });
+  if (error) { toast('エラー: ' + error.message, false); return; }
+  document.getElementById('cat-icon-input').value = '';
+  document.getElementById('cat-name-input').value = '';
+  toast('カテゴリを追加しました');
+  await loadCategories();
+  loadCategoryMaster();
+}
+
+// カテゴリ更新
+async function updateCategory(id) {
+  const icon = document.getElementById('icon-' + id).value.trim();
+  const name = document.getElementById('name-' + id).value.trim();
+  if (!name) { toast('カテゴリ名を入力してください', false); return; }
+  const { error } = await sb.from('categories').update({ icon, name }).eq('id', id);
+  if (error) { toast('エラー: ' + error.message, false); return; }
+  toast('更新しました');
+  await loadCategories();
+}
+
+// カテゴリ削除
+async function deleteCategory(id) {
+  const cat = categories.find(c => c.id === id);
+  if (cat?.name === '未分類') { toast('未分類は削除できません', false); return; }
+  const { error } = await sb.from('categories').delete().eq('id', id);
+  if (error) { toast('エラー: ' + error.message, false); return; }
+  toast('削除しました');
+  await loadCategories();
+  loadCategoryMaster();
+}
+
+// ドラッグ&ドロップで並び順変更
+let dragId = null;
+function dragStart(e, id) { dragId = id; e.dataTransfer.effectAllowed = 'move'; }
+function dragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+async function dragDrop(e, targetId) {
+  e.preventDefault();
+  if (dragId === targetId) return;
+  const { data } = await sb.from('categories').select('id, sort_order').order('sort_order');
+  const ids = data.map(c => c.id);
+  const fromIdx = ids.indexOf(dragId);
+  const toIdx = ids.indexOf(targetId);
+  ids.splice(fromIdx, 1);
+  ids.splice(toIdx, 0, dragId);
+  for (let i = 0; i < ids.length; i++) {
+    await sb.from('categories').update({ sort_order: i + 1 }).eq('id', ids[i]);
+  }
+  toast('並び順を変更しました');
+  await loadCategories();
+  loadCategoryMaster();
 }
 
 // 初期化
