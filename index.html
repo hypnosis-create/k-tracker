@@ -590,17 +590,26 @@ async function handleCSV(input) {
 
   previewData = [];
   for (let i = dataStart; i < lines.length; i++) {
-    const cols = lines[i].split(',').map(c => c.replace(/"/g,'').trim());
+    // クォート内カンマを保持しながらCSV解析
+    const cols = [];
+    let cur = '', inQ = false;
+    for (const ch of lines[i]) {
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+      else { cur += ch; }
+    }
+    cols.push(cur.trim());
+
     if (cols.length < 5) continue;
-    const date = cols[2] || cols[0];
-    const desc = cols[3] || cols[1];
-    const amtStr = cols[4] || cols[2];
+    // ANA JCB: 0=ご利用者 1=カテゴリ 2=ご利用日 3=ご利用先 4=ご利用金額
+    const date = cols[2];
+    const desc = cols[3];
+    const amtStr = cols[4];
     const amt = parseInt(amtStr.replace(/[^\d]/g,''));
     if (!amt || isNaN(amt) || amt <= 0) continue;
-    if (!date.match(/\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/) && !date.match(/\d{1,2}[\/\-]\d{1,2}/)) continue;
+    if (!date.match(/\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/)) continue;
 
-    let dateStr = date.replace(/\//g,'-');
-    if (dateStr.match(/^\d{2}-\d{2}$/)) dateStr = new Date().getFullYear() + '-' + dateStr;
+    let dateStr = date.trim().replace(/\//g,'-');
 
     const catId = detectCategory(desc);
     previewData.push({ date: dateStr, description: desc, amount: amt, category_id: catId });
@@ -742,10 +751,14 @@ function clearFilter() {
 // マスタ
 async function loadMaster() {
   await loadKeywordMaster();
+  const catOptions = categories.map(c => `<option value="${c.id}">${c.icon||''} ${c.name}</option>`).join('');
   document.getElementById('master-list').innerHTML = keywordMaster.length ?
-    keywordMaster.map(k => `<div class="master-item">
-      <span class="mono" style="font-size:12px;">${k.keyword}</span>
-      <span class="cat-badge">${k.categories?.icon||''} ${k.categories?.name||'?'}</span>
+    keywordMaster.map(k => `<div class="master-item" style="gap:8px;">
+      <input id="kw-text-${k.id}" value="${k.keyword}" style="flex:1;min-width:100px;font-size:12px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+      <select id="kw-cat-${k.id}" style="font-size:12px;padding:4px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+        ${categories.map(c => `<option value="${c.id}" ${c.id === k.category_id ? 'selected' : ''}>${c.icon||''} ${c.name}</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="updateKeyword(${k.id})">保存</button>
       <button class="btn btn-danger btn-sm" onclick="deleteKeyword(${k.id})">削除</button>
     </div>`).join('') :
     '<div class="empty">登録なし</div>';
@@ -759,6 +772,16 @@ async function saveKeyword() {
   if (error) { toast('エラー: ' + error.message, false); return; }
   toast('登録しました');
   document.getElementById('kw-input').value = '';
+  await loadMaster();
+}
+
+async function updateKeyword(id) {
+  const kw = document.getElementById('kw-text-' + id).value.trim();
+  const catId = parseInt(document.getElementById('kw-cat-' + id).value);
+  if (!kw || !catId) { toast('キーワードとカテゴリを入力してください', false); return; }
+  const { error } = await sb.from('keyword_master').update({ keyword: kw, category_id: catId }).eq('id', id);
+  if (error) { toast('エラー: ' + error.message, false); return; }
+  toast('更新しました');
   await loadMaster();
 }
 
