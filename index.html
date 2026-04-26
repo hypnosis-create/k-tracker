@@ -354,12 +354,13 @@
 
   <!-- 収入入力 -->
   <div class="form-card" style="margin-bottom:16px;">
-    <div class="form-title">収入を入力</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <input type="number" id="income-amount" placeholder="給与・賞与など（円）" style="flex:1;min-width:160px;">
-      <input type="text" id="income-memo" placeholder="メモ（例：給与）" style="flex:1;min-width:120px;">
-      <button class="btn btn-primary" onclick="saveIncome()">保存</button>
+    <div class="form-title">収入を追加</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+      <input type="number" id="income-amount" placeholder="金額（円）" style="flex:1;min-width:160px;">
+      <input type="text" id="income-memo" placeholder="メモ（例：給与・賞与・手当）" style="flex:1;min-width:120px;">
+      <button class="btn btn-primary" onclick="saveIncome()">追加</button>
     </div>
+    <div id="income-list"></div>
   </div>
 
   <div class="two-col">
@@ -1058,14 +1059,37 @@ async function loadAnalysis() {
 // 収入保存
 async function saveIncome() {
   const amount = parseInt(document.getElementById('income-amount').value);
-  const memo = document.getElementById('income-memo').value;
+  const memo = document.getElementById('income-memo').value.trim();
   if (!amount) { toast('金額を入力してください', false); return; }
-  // 既存削除して上書き
-  await sb.from('income').delete().eq('year_month', analysisMonth);
   const { error } = await sb.from('income').insert({ year_month: analysisMonth, amount, memo });
   if (error) { toast('エラー: ' + error.message, false); return; }
-  toast('収入を保存しました');
+  document.getElementById('income-amount').value = '';
+  document.getElementById('income-memo').value = '';
+  toast('収入を追加しました');
   loadAnalysis();
+}
+
+function toggleIncomeDetail(mo) {
+  const el = document.getElementById('income-detail-' + mo);
+  if (el) el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
+}
+
+async function deleteIncome(id) {
+  await sb.from('income').delete().eq('id', id);
+  toast('削除しました');
+  loadAnalysis();
+}
+
+function renderIncomeList(incList) {
+  const el = document.getElementById('income-list');
+  if (!el) return;
+  el.innerHTML = incList.length ?
+    incList.map(r => `<div class="master-item" style="gap:8px;">
+      <span style="font-size:13px;flex:1;">${r.memo || '収入'}</span>
+      <span class="mono" style="font-size:13px;color:var(--accent);">¥${r.amount.toLocaleString()}</span>
+      <button class="btn btn-danger btn-sm" onclick="deleteIncome(${r.id})">削除</button>
+    </div>`).join('') :
+    '<div style="font-size:12px;color:var(--text3);padding:4px 0;">まだ収入が登録されていません</div>';
 }
 
 // カテゴリ別推移
@@ -1113,10 +1137,10 @@ async function loadYearlySummary() {
     const md = new Date(parseInt(mo.slice(0,4)), parseInt(mo.slice(5,7)), 0).toISOString().slice(0,10);
     const { data: t1 } = await sb.from('transactions').select('amount').gte('date', ms).lte('date', md);
     const { data: t2 } = await sb.from('manual_entries').select('amount').eq('year_month', mo);
-    const { data: inc } = await sb.from('income').select('amount').eq('year_month', mo);
+    const { data: inc } = await sb.from('income').select('*').eq('year_month', mo).order('id');
     const exp = [...(t1||[]),...(t2||[])].reduce((s,r) => s+r.amount, 0);
     const income = (inc||[]).reduce((s,r) => s+r.amount, 0);
-    return { mo, exp, income };
+    return { mo, exp, income, incList: inc||[] };
   }));
   const totalExp = totals.reduce((s,r) => s+r.exp, 0);
   const totalInc = totals.reduce((s,r) => s+r.income, 0);
@@ -1133,10 +1157,23 @@ async function loadYearlySummary() {
           const bal = r.income - r.exp;
           return `<tr style="border-bottom:1px solid rgba(46,46,46,0.4);">
             <td style="padding:6px 8px;">${r.mo.slice(5)}月</td>
-            <td style="text-align:right;padding:6px 8px;font-family:monospace;color:var(--accent);">${r.income ? '¥'+r.income.toLocaleString() : '-'}</td>
+            <td style="text-align:right;padding:6px 8px;font-family:monospace;color:var(--accent);cursor:${r.incList.length > 1 ? 'pointer' : 'default'};"
+              onclick="${r.incList.length > 1 ? 'toggleIncomeDetail(\'' + r.mo + '\')' : ''}"
+              title="${r.incList.length > 1 ? 'クリックで内訳表示' : ''}">
+              ${r.income ? '¥'+r.income.toLocaleString() + (r.incList.length > 1 ? ' ▾' : '') : '-'}
+            </td>
+            </tr>
+            ${r.incList.length > 1 ? `<tr id="income-detail-${r.mo}" style="display:none;background:rgba(168,230,163,0.05);">
+              <td colspan="4" style="padding:4px 8px 8px 32px;">
+                ${r.incList.map(i => `<div style="font-size:11px;color:var(--text2);display:flex;justify-content:space-between;padding:2px 0;">
+                  <span>${i.memo||'収入'}</span>
+                  <span class="mono">¥${i.amount.toLocaleString()}</span>
+                </div>`).join('')}
+              </td>
+            </tr>` : '<tr style="display:none;">'}
             <td style="text-align:right;padding:6px 8px;font-family:monospace;">${r.exp ? '¥'+r.exp.toLocaleString() : '-'}</td>
             <td style="text-align:right;padding:6px 8px;font-family:monospace;color:${bal >= 0 ? 'var(--accent)' : 'var(--danger)'};">${r.income || r.exp ? (bal >= 0 ? '+' : '') + '¥'+bal.toLocaleString() : '-'}</td>
-          </tr>`;
+          `;
         }).join('')}
         <tr style="border-top:2px solid var(--border);">
           <td style="padding:6px 8px;font-weight:500;">年間合計</td>
