@@ -317,6 +317,11 @@
   <div class="form-card" style="padding:12px 16px;">
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
       <input type="month" id="filter-month" style="width:160px;" onchange="loadTransactions()">
+      <select id="filter-type" style="width:120px;" onchange="loadTransactions()">
+        <option value="">全て</option>
+        <option value="expense">支出のみ</option>
+        <option value="income">収入のみ</option>
+      </select>
       <select id="filter-cat" style="width:160px;" onchange="loadTransactions()">
         <option value="">すべてのカテゴリ</option>
       </select>
@@ -329,7 +334,7 @@
       <span id="list-count" style="color:var(--text3);font-size:11px;"></span>
     </div>
     <table>
-      <thead><tr><th>日付</th><th>利用先</th><th>カテゴリ</th><th>金額</th><th></th></tr></thead>
+      <thead><tr><th>日付</th><th>種別</th><th>利用先／メモ</th><th>カテゴリ</th><th>金額</th><th></th></tr></thead>
       <tbody id="list-tbody"></tbody>
     </table>
   </div>
@@ -781,29 +786,71 @@ async function deleteManual(id) {
 async function loadTransactions() {
   const fm = document.getElementById('filter-month').value;
   const fc = document.getElementById('filter-cat').value;
-  let q = sb.from('transactions').select('*, categories(name,icon)').order('date', { ascending: false }).limit(200);
-  if (fm) {
-    const [fy, fm2] = fm.split('-').map(Number);
-    const lastDay = new Date(fy, fm2, 0).getDate();
-    q = q.gte('date', fm + '-01').lte('date', fm + '-' + String(lastDay).padStart(2,'0'));
+  const ft = document.getElementById('filter-type')?.value || '';
+
+  let rows = [];
+
+  if (ft !== 'income') {
+    let q = sb.from('transactions').select('*, categories(name,icon)').order('date', { ascending: false }).limit(200);
+    if (fm) {
+      const [fy, fm2] = fm.split('-').map(Number);
+      const lastDay = new Date(fy, fm2, 0).getDate();
+      q = q.gte('date', fm + '-01').lte('date', fm + '-' + String(lastDay).padStart(2,'0'));
+    }
+    if (fc) q = q.eq('category_id', parseInt(fc));
+    const { data } = await q;
+    (data||[]).forEach(r => rows.push({ ...r, _type: 'expense' }));
   }
-  if (fc) { q = q.eq('category_id', parseInt(fc)); }
-  const { data } = await q;
-  document.getElementById('list-count').textContent = `${(data||[]).length}件`;
-  const catOptions = categories.map(c => `<option value="${c.id}">${c.icon||''} ${c.name}</option>`).join('');
-  document.getElementById('list-tbody').innerHTML = (data||[]).map(r => `<tr>
-    <td class="mono" style="font-size:11px;">${r.date}</td>
-    <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.description||''}</td>
-    <td>
-      <select style="font-size:11px;padding:4px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);"
-        onchange="updateCat(${r.id}, this.value, '${(r.description||'').replace(/'/g,'\\')}')">
-        ${categories.map(c => `<option value="${c.id}" ${c.id === r.category_id ? 'selected' : ''}>${c.icon||''} ${c.name}</option>`).join('')}
-      </select>
-    </td>
-    <td class="amount-col">¥${r.amount.toLocaleString()}</td>
-    <td><button class="btn btn-danger btn-sm" onclick="deleteTransaction(${r.id})">削除</button></td>
-  </tr>`).join('') || '<tr><td colspan="5" class="empty">データなし</td></tr>';
+
+  if (ft !== 'expense') {
+    let q2 = sb.from('income').select('*').order('year_month', { ascending: false });
+    if (fm) q2 = q2.eq('year_month', fm);
+    const { data: inc } = await q2;
+    (inc||[]).forEach(r => rows.push({ ...r, _type: 'income', date: r.year_month + '-01' }));
+  }
+
+  rows.sort((a, b) => b.date.localeCompare(a.date));
+  document.getElementById('list-count').textContent = rows.length + '件';
+
+  document.getElementById('list-tbody').innerHTML = rows.map(r => {
+    if (r._type === 'income') {
+      return '<tr style="background:rgba(168,230,163,0.05);">' +
+        '<td class="mono" style="font-size:11px;">' + r.year_month + '</td>' +
+        '<td><span style="font-size:11px;padding:2px 6px;border-radius:10px;background:rgba(168,230,163,0.2);color:var(--accent);">収入</span></td>' +
+        '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (r.memo||'収入') + '</td>' +
+        '<td><span style="color:var(--text3);font-size:11px;">—</span></td>' +
+        '<td class="amount-col"><input type="number" value="' + r.amount + '" style="width:110px;text-align:right;font-family:monospace;font-size:13px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 6px;color:var(--accent);" onchange="updateIncomeAmount(' + r.id + ', this.value)"></td>' +
+        '<td><button class="btn btn-danger btn-sm" onclick="deleteIncome(' + r.id + ')">削除</button></td>' +
+        '</tr>';
+    } else {
+      return '<tr>' +
+        '<td class="mono" style="font-size:11px;">' + r.date + '</td>' +
+        '<td><span style="font-size:11px;padding:2px 6px;border-radius:10px;background:var(--surface2);color:var(--text2);">支出</span></td>' +
+        '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (r.description||'') + '</td>' +
+        '<td><select style="font-size:11px;padding:4px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);" onchange="updateCat(' + r.id + ', this.value, '' + (r.description||'').replace(/'/g, "\'") + '')">' +
+        categories.map(c => '<option value="' + c.id + '"' + (c.id === r.category_id ? ' selected' : '') + '>' + (c.icon||'') + ' ' + c.name + '</option>').join('') +
+        '</select></td>' +
+        '<td class="amount-col"><input type="number" value="' + r.amount + '" style="width:110px;text-align:right;font-family:monospace;font-size:13px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 6px;color:var(--text);" onchange="updateTransactionAmount(' + r.id + ', this.value)"></td>' +
+        '<td><button class="btn btn-danger btn-sm" onclick="deleteTransaction(' + r.id + ')">削除</button></td>' +
+        '</tr>';
+    }
+  }).join('') || '<tr><td colspan="6" class="empty">データなし</td></tr>';
 }
+
+async function updateTransactionAmount(id, val) {
+  const amount = parseInt(val);
+  if (!amount || amount <= 0) { toast('正しい金額を入力してください', false); return; }
+  await sb.from('transactions').update({ amount }).eq('id', id);
+  toast('金額を更新しました');
+}
+
+async function updateIncomeAmount(id, val) {
+  const amount = parseInt(val);
+  if (!amount || amount <= 0) { toast('正しい金額を入力してください', false); return; }
+  await sb.from('income').update({ amount }).eq('id', id);
+  toast('収入金額を更新しました');
+}
+
 
 async function updateCat(id, catId, desc) {
   await sb.from('transactions').update({ category_id: parseInt(catId) }).eq('id', id);
@@ -839,6 +886,7 @@ async function applyMasterToAll() {
 function clearFilter() {
   document.getElementById('filter-month').value = '';
   document.getElementById('filter-cat').value = '';
+  document.getElementById('filter-type').value = '';
   loadTransactions();
 }
 
