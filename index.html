@@ -781,7 +781,11 @@ async function loadTransactions() {
   const fm = document.getElementById('filter-month').value;
   const fc = document.getElementById('filter-cat').value;
   let q = sb.from('transactions').select('*, categories(name,icon)').order('date', { ascending: false }).limit(200);
-  if (fm) { q = q.gte('date', fm + '-01').lte('date', fm + '-31'); }
+  if (fm) {
+    const [fy, fm2] = fm.split('-').map(Number);
+    const lastDay = new Date(fy, fm2, 0).getDate();
+    q = q.gte('date', fm + '-01').lte('date', fm + '-' + String(lastDay).padStart(2,'0'));
+  }
   if (fc) { q = q.eq('category_id', parseInt(fc)); }
   const { data } = await q;
   document.getElementById('list-count').textContent = `${(data||[]).length}件`;
