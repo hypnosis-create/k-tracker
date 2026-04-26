@@ -321,6 +321,7 @@
         <option value="">全て</option>
         <option value="expense">支出のみ</option>
         <option value="income">収入のみ</option>
+        <option value="manual">手入力のみ</option>
       </select>
       <select id="filter-cat" style="width:160px;" onchange="loadTransactions()">
         <option value="">すべてのカテゴリ</option>
@@ -809,6 +810,14 @@ async function loadTransactions() {
     (inc||[]).forEach(r => rows.push({ ...r, _type: 'income', date: r.year_month + '-01' }));
   }
 
+  if (ft !== 'income') {
+    let q3 = sb.from('manual_entries').select('*, categories(name,icon)').order('year_month', { ascending: false });
+    if (fm) q3 = q3.eq('year_month', fm);
+    if (fc) q3 = q3.eq('category_id', parseInt(fc));
+    const { data: man } = await q3;
+    (man||[]).forEach(r => rows.push({ ...r, _type: 'manual', date: r.year_month + '-01' }));
+  }
+
   rows.sort((a, b) => b.date.localeCompare(a.date));
   document.getElementById('list-count').textContent = rows.length + '件';
 
@@ -821,6 +830,15 @@ async function loadTransactions() {
         '<td><span style="color:var(--text3);font-size:11px;">—</span></td>' +
         '<td class="amount-col"><input type="number" value="' + r.amount + '" style="width:110px;text-align:right;font-family:monospace;font-size:13px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 6px;color:var(--accent);" onchange="updateIncomeAmount(' + r.id + ', this.value)"></td>' +
         '<td><button class="btn btn-danger btn-sm" onclick="deleteIncome(' + r.id + ')">削除</button></td>' +
+        '</tr>';
+    } else if (r._type === 'manual') {
+      return '<tr style="background:rgba(125,212,240,0.05);">' +
+        '<td class="mono" style="font-size:11px;">' + r.year_month + '</td>' +
+        '<td><span style="font-size:11px;padding:2px 6px;border-radius:10px;background:rgba(125,212,240,0.2);color:#7dd4f0;">手入力</span></td>' +
+        '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (r.memo||r.categories?.name||'') + '</td>' +
+        '<td><span style="font-size:11px;color:var(--text2);">' + (r.categories?.icon||'') + ' ' + (r.categories?.name||'') + '</span></td>' +
+        '<td class="amount-col"><input type="number" value="' + r.amount + '" style="width:110px;text-align:right;font-family:monospace;font-size:13px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 6px;color:var(--text);" onchange="updateManualAmount(' + r.id + ', this.value)"></td>' +
+        '<td><button class="btn btn-danger btn-sm" onclick="deleteManualEntry(' + r.id + ')">削除</button></td>' +
         '</tr>';
     } else {
       return '<tr>' +
@@ -842,6 +860,19 @@ async function updateTransactionAmount(id, val) {
   if (!amount || amount <= 0) { toast('正しい金額を入力してください', false); return; }
   await sb.from('transactions').update({ amount }).eq('id', id);
   toast('金額を更新しました');
+}
+
+async function updateManualAmount(id, val) {
+  const amount = parseInt(val);
+  if (!amount || amount <= 0) { toast('正しい金額を入力してください', false); return; }
+  await sb.from('manual_entries').update({ amount }).eq('id', id);
+  toast('金額を更新しました');
+}
+
+async function deleteManualEntry(id) {
+  await sb.from('manual_entries').delete().eq('id', id);
+  toast('削除しました');
+  loadTransactions();
 }
 
 async function updateIncomeAmount(id, val) {
