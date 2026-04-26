@@ -202,6 +202,7 @@
   <button class="nav-tab" onclick="showPage('import', this)">CSV取込</button>
   <button class="nav-tab" onclick="showPage('manual', this)">手入力</button>
   <button class="nav-tab" onclick="showPage('list', this)">明細</button>
+  <button class="nav-tab" onclick="showPage('analysis', this)">分析</button>
   <button class="nav-tab" onclick="showPage('master', this)">マスタ</button>
 </nav>
 
@@ -303,6 +304,16 @@
 
 <!-- 明細一覧 -->
 <div id="page-list" class="page">
+  <div class="form-card">
+    <div class="form-title">取引を手動追加</div>
+    <div class="form-grid">
+      <div class="form-group"><label>日付</label><input type="date" id="add-date"></div>
+      <div class="form-group"><label>利用先</label><input type="text" id="add-desc" placeholder="例：沖縄電力"></div>
+      <div class="form-group"><label>金額（円）</label><input type="number" id="add-amount" placeholder="91000"></div>
+      <div class="form-group"><label>カテゴリ</label><select id="add-cat"></select></div>
+    </div>
+    <button class="btn btn-primary" onclick="addTransaction()">追加</button>
+  </div>
   <div class="form-card" style="padding:12px 16px;">
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
       <input type="month" id="filter-month" style="width:160px;" onchange="loadTransactions()">
@@ -318,10 +329,86 @@
       <span id="list-count" style="color:var(--text3);font-size:11px;"></span>
     </div>
     <table>
-      <thead><tr><th>日付</th><th>利用先</th><th>カテゴリ</th><th>金額</th></tr></thead>
+      <thead><tr><th>日付</th><th>利用先</th><th>カテゴリ</th><th>金額</th><th></th></tr></thead>
       <tbody id="list-tbody"></tbody>
     </table>
   </div>
+</div>
+
+<!-- 分析 -->
+<div id="page-analysis" class="page">
+
+  <!-- 収支サマリー -->
+  <div class="kpi-grid" style="margin-bottom:20px;">
+    <div class="kpi-card"><div class="kpi-label">今月収入</div><div class="kpi-value" id="an-income">¥---</div></div>
+    <div class="kpi-card"><div class="kpi-label">今月支出</div><div class="kpi-value" id="an-expense">¥---</div></div>
+    <div class="kpi-card"><div class="kpi-label">収支差額</div><div class="kpi-value" id="an-balance">¥---</div><div class="kpi-sub" id="an-balance-sub"></div></div>
+  </div>
+
+  <!-- 月切替 -->
+  <div class="month-nav" style="margin-bottom:16px;">
+    <button class="btn btn-ghost btn-sm" onclick="changeAnalysisMonth(-1)">◀</button>
+    <div class="month-display mono" id="analysis-month-display">2026-04</div>
+    <button class="btn btn-ghost btn-sm" onclick="changeAnalysisMonth(1)">▶</button>
+  </div>
+
+  <!-- 収入入力 -->
+  <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-title">収入を入力</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <input type="number" id="income-amount" placeholder="給与・賞与など（円）" style="flex:1;min-width:160px;">
+      <input type="text" id="income-memo" placeholder="メモ（例：給与）" style="flex:1;min-width:120px;">
+      <button class="btn btn-primary" onclick="saveIncome()">保存</button>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <!-- 円グラフ -->
+    <div class="chart-card">
+      <div class="chart-title">カテゴリ別内訳（円グラフ）</div>
+      <div class="chart-wrap"><canvas id="chart-pie"></canvas></div>
+    </div>
+    <!-- カテゴリ別推移 -->
+    <div class="chart-card">
+      <div class="chart-title">カテゴリ別月別推移</div>
+      <div style="margin-bottom:8px;">
+        <select id="analysis-cat-select" style="font-size:12px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);width:100%;" onchange="loadCatTrend()"></select>
+      </div>
+      <div class="chart-wrap"><canvas id="chart-cat-trend"></canvas></div>
+    </div>
+  </div>
+
+  <!-- 年間サマリー -->
+  <div class="chart-card">
+    <div class="chart-title">年間サマリー</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+      <select id="summary-year" style="font-size:12px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);" onchange="loadYearlySummary()">
+        <option value="2026">2026年</option>
+        <option value="2025">2025年</option>
+        <option value="2024">2024年</option>
+      </select>
+    </div>
+    <div id="yearly-summary" style="overflow-x:auto;"></div>
+  </div>
+
+  <!-- 支出ランキング -->
+  <div class="chart-card">
+    <div class="chart-title">支出ランキング トップ10（今月）</div>
+    <div id="ranking-list"></div>
+  </div>
+
+  <!-- 固定費設定 -->
+  <div class="form-card">
+    <div class="form-title">固定費設定</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+      <select id="fixed-cat" style="flex:1;min-width:140px;"></select>
+      <input type="number" id="fixed-amount" placeholder="金額（円）" style="flex:1;min-width:120px;">
+      <input type="text" id="fixed-memo" placeholder="メモ（例：家賃）" style="flex:1;min-width:120px;">
+      <button class="btn btn-primary" onclick="saveFixedCost()">登録</button>
+    </div>
+    <div id="fixed-list"></div>
+  </div>
+
 </div>
 
 <!-- マスタ管理 -->
@@ -393,6 +480,7 @@ function showPage(name, el) {
   if (name === 'list') loadTransactions();
   if (name === 'manual') loadManual();
   if (name === 'master') loadMaster();
+  if (name === 'analysis') { loadAnalysis(); }
 }
 
 // トースト
@@ -708,7 +796,8 @@ async function loadTransactions() {
       </select>
     </td>
     <td class="amount-col">¥${r.amount.toLocaleString()}</td>
-  </tr>`).join('') || '<tr><td colspan="4" class="empty">データなし</td></tr>';
+    <td><button class="btn btn-danger btn-sm" onclick="deleteTransaction(${r.id})">削除</button></td>
+  </tr>`).join('') || '<tr><td colspan="5" class="empty">データなし</td></tr>';
 }
 
 async function updateCat(id, catId, desc) {
@@ -875,13 +964,281 @@ async function dragDrop(e, targetId) {
   loadCategoryMaster();
 }
 
+
+// 分析月
+let analysisMonth = new Date().toISOString().slice(0,7);
+let pieChart = null;
+let catTrendChart = null;
+
+function changeAnalysisMonth(d) {
+  const [y, m] = analysisMonth.split('-').map(Number);
+  let newM = m + d, newY = y;
+  if (newM > 12) { newM = 1; newY++; }
+  if (newM < 1) { newM = 12; newY--; }
+  analysisMonth = newY + '-' + String(newM).padStart(2,'0');
+  document.getElementById('analysis-month-display').textContent = analysisMonth;
+  loadAnalysis();
+}
+
+async function loadAnalysis() {
+  const [y, m] = analysisMonth.split('-').map(Number);
+  const start = analysisMonth + '-01';
+  const end = new Date(y, m, 0).toISOString().slice(0,10);
+
+  // 支出
+  const { data: txs } = await sb.from('transactions').select('amount, categories(name,icon)').gte('date', start).lte('date', end);
+  const { data: mans } = await sb.from('manual_entries').select('amount, categories(name,icon)').eq('year_month', analysisMonth);
+  const allExp = [...(txs||[]), ...(mans||[])];
+  const expense = allExp.reduce((s,r) => s + r.amount, 0);
+
+  // 収入
+  const { data: inc } = await sb.from('income').select('amount').eq('year_month', analysisMonth);
+  const income = (inc||[]).reduce((s,r) => s + r.amount, 0);
+  const balance = income - expense;
+
+  document.getElementById('an-income').textContent = '¥' + income.toLocaleString();
+  document.getElementById('an-expense').textContent = '¥' + expense.toLocaleString();
+  document.getElementById('an-balance').textContent = '¥' + Math.abs(balance).toLocaleString();
+  document.getElementById('an-balance').style.color = balance >= 0 ? 'var(--accent)' : 'var(--danger)';
+  document.getElementById('an-balance-sub').textContent = balance >= 0 ? '黒字' : '赤字';
+
+  // 既存収入を入力欄にセット
+  if (inc && inc.length > 0) {
+    const total = inc.reduce((s,r) => s + r.amount, 0);
+    document.getElementById('income-amount').value = total;
+  } else {
+    document.getElementById('income-amount').value = '';
+  }
+
+  // 円グラフ
+  const catMap = {};
+  allExp.forEach(r => {
+    const name = r.categories?.name || '未分類';
+    catMap[name] = (catMap[name] || 0) + r.amount;
+  });
+  const sorted = Object.entries(catMap).sort((a,b) => b[1]-a[1]);
+  const colors = ['#a8e6a3','#7dd4f0','#f0c77d','#f07d7d','#c77df0','#7df0d4','#f0a87d','#7d9cf0','#e6a3a8','#d4f07d'];
+
+  if (pieChart) pieChart.destroy();
+  const ctx = document.getElementById('chart-pie').getContext('2d');
+  pieChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: sorted.map(([n]) => n),
+      datasets: [{ data: sorted.map(([,v]) => v), backgroundColor: sorted.map((_,i) => colors[i % colors.length]), borderWidth: 0 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { color: '#888', font: { size: 10 }, boxWidth: 10 } }
+      }
+    }
+  });
+
+  // ランキング
+  const { data: rankTxs } = await sb.from('transactions').select('description, amount, categories(name,icon)').gte('date', start).lte('date', end).order('amount', { ascending: false }).limit(10);
+  document.getElementById('ranking-list').innerHTML = (rankTxs||[]).length ?
+    (rankTxs||[]).map((r, i) => `<div class="cat-row">
+      <span style="color:var(--text3);font-size:11px;min-width:20px;">${i+1}</span>
+      <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.description||''}</span>
+      <span class="cat-badge" style="margin:0 8px;">${r.categories?.icon||''} ${r.categories?.name||'?'}</span>
+      <span class="mono" style="font-size:13px;">¥${r.amount.toLocaleString()}</span>
+    </div>`).join('') :
+    '<div class="empty">データなし</div>';
+
+  // 年間サマリー
+  loadYearlySummary();
+  loadFixedCosts();
+}
+
+// 収入保存
+async function saveIncome() {
+  const amount = parseInt(document.getElementById('income-amount').value);
+  const memo = document.getElementById('income-memo').value;
+  if (!amount) { toast('金額を入力してください', false); return; }
+  // 既存削除して上書き
+  await sb.from('income').delete().eq('year_month', analysisMonth);
+  const { error } = await sb.from('income').insert({ year_month: analysisMonth, amount, memo });
+  if (error) { toast('エラー: ' + error.message, false); return; }
+  toast('収入を保存しました');
+  loadAnalysis();
+}
+
+// カテゴリ別推移
+async function loadCatTrend() {
+  const catId = parseInt(document.getElementById('analysis-cat-select').value);
+  if (!catId) return;
+  const months6 = [];
+  const [y, m] = analysisMonth.split('-').map(Number);
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(y, m-1-i, 1);
+    months6.push(d.toISOString().slice(0,7));
+  }
+  const amounts = await Promise.all(months6.map(async mo => {
+    const ms = mo + '-01';
+    const md = new Date(parseInt(mo.slice(0,4)), parseInt(mo.slice(5,7)), 0).toISOString().slice(0,10);
+    const { data: t1 } = await sb.from('transactions').select('amount').eq('category_id', catId).gte('date', ms).lte('date', md);
+    const { data: t2 } = await sb.from('manual_entries').select('amount').eq('category_id', catId).eq('year_month', mo);
+    return [...(t1||[]),...(t2||[])].reduce((s,r) => s+r.amount, 0);
+  }));
+  if (catTrendChart) catTrendChart.destroy();
+  const ctx = document.getElementById('chart-cat-trend').getContext('2d');
+  catTrendChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: months6.map(m => m.slice(5) + '月'),
+      datasets: [{ data: amounts, backgroundColor: '#7dd4f0', borderRadius: 4 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: '#2e2e2e' }, ticks: { color: '#888', font: { size: 11 } } },
+        y: { grid: { color: '#2e2e2e' }, ticks: { color: '#888', font: { size: 11 }, callback: v => '¥' + (v/10000).toFixed(0) + '万' } }
+      }
+    }
+  });
+}
+
+// 年間サマリー
+async function loadYearlySummary() {
+  const year = document.getElementById('summary-year')?.value || new Date().getFullYear();
+  const months = Array.from({length: 12}, (_,i) => `${year}-${String(i+1).padStart(2,'0')}`);
+  const totals = await Promise.all(months.map(async mo => {
+    const ms = mo + '-01';
+    const md = new Date(parseInt(mo.slice(0,4)), parseInt(mo.slice(5,7)), 0).toISOString().slice(0,10);
+    const { data: t1 } = await sb.from('transactions').select('amount').gte('date', ms).lte('date', md);
+    const { data: t2 } = await sb.from('manual_entries').select('amount').eq('year_month', mo);
+    const { data: inc } = await sb.from('income').select('amount').eq('year_month', mo);
+    const exp = [...(t1||[]),...(t2||[])].reduce((s,r) => s+r.amount, 0);
+    const income = (inc||[]).reduce((s,r) => s+r.amount, 0);
+    return { mo, exp, income };
+  }));
+  const totalExp = totals.reduce((s,r) => s+r.exp, 0);
+  const totalInc = totals.reduce((s,r) => s+r.income, 0);
+  document.getElementById('yearly-summary').innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 8px;color:var(--text3);border-bottom:1px solid var(--border);">月</th>
+        <th style="text-align:right;padding:6px 8px;color:var(--text3);border-bottom:1px solid var(--border);">収入</th>
+        <th style="text-align:right;padding:6px 8px;color:var(--text3);border-bottom:1px solid var(--border);">支出</th>
+        <th style="text-align:right;padding:6px 8px;color:var(--text3);border-bottom:1px solid var(--border);">収支</th>
+      </tr></thead>
+      <tbody>
+        ${totals.map(r => {
+          const bal = r.income - r.exp;
+          return `<tr style="border-bottom:1px solid rgba(46,46,46,0.4);">
+            <td style="padding:6px 8px;">${r.mo.slice(5)}月</td>
+            <td style="text-align:right;padding:6px 8px;font-family:monospace;color:var(--accent);">${r.income ? '¥'+r.income.toLocaleString() : '-'}</td>
+            <td style="text-align:right;padding:6px 8px;font-family:monospace;">${r.exp ? '¥'+r.exp.toLocaleString() : '-'}</td>
+            <td style="text-align:right;padding:6px 8px;font-family:monospace;color:${bal >= 0 ? 'var(--accent)' : 'var(--danger)'};">${r.income || r.exp ? (bal >= 0 ? '+' : '') + '¥'+bal.toLocaleString() : '-'}</td>
+          </tr>`;
+        }).join('')}
+        <tr style="border-top:2px solid var(--border);">
+          <td style="padding:6px 8px;font-weight:500;">年間合計</td>
+          <td style="text-align:right;padding:6px 8px;font-family:monospace;color:var(--accent);font-weight:500;">¥${totalInc.toLocaleString()}</td>
+          <td style="text-align:right;padding:6px 8px;font-family:monospace;font-weight:500;">¥${totalExp.toLocaleString()}</td>
+          <td style="text-align:right;padding:6px 8px;font-family:monospace;font-weight:500;color:${totalInc-totalExp >= 0 ? 'var(--accent)' : 'var(--danger)'};">${totalInc-totalExp >= 0 ? '+' : ''}¥${(totalInc-totalExp).toLocaleString()}</td>
+        </tr>
+      </tbody>
+    </table>`;
+}
+
+// 固定費
+async function loadFixedCosts() {
+  const { data } = await sb.from('fixed_costs').select('*, categories(name,icon)').eq('active', true);
+  document.getElementById('fixed-list').innerHTML = (data||[]).length ?
+    (data||[]).map(f => `<div class="master-item">
+      <span style="font-size:13px;">${f.categories?.icon||''} ${f.categories?.name||'?'}</span>
+      <span class="mono" style="font-size:13px;">¥${f.amount.toLocaleString()}</span>
+      <span style="font-size:12px;color:var(--text2);">${f.memo||''}</span>
+      <button class="btn btn-primary btn-sm" onclick="applyFixedCost(${f.id}, '${f.categories?.name||''}', ${f.amount}, ${f.category_id})">今月計上</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteFixedCost(${f.id})">削除</button>
+    </div>`).join('') :
+    '<div class="empty" style="padding:12px;">固定費なし</div>';
+}
+
+async function saveFixedCost() {
+  const catId = parseInt(document.getElementById('fixed-cat').value);
+  const amount = parseInt(document.getElementById('fixed-amount').value);
+  const memo = document.getElementById('fixed-memo').value;
+  if (!catId || !amount) { toast('カテゴリと金額を入力してください', false); return; }
+  const { error } = await sb.from('fixed_costs').insert({ category_id: catId, amount, memo });
+  if (error) { toast('エラー: ' + error.message, false); return; }
+  toast('固定費を登録しました');
+  document.getElementById('fixed-amount').value = '';
+  document.getElementById('fixed-memo').value = '';
+  loadFixedCosts();
+}
+
+async function applyFixedCost(id, name, amount, catId) {
+  const { error } = await sb.from('manual_entries').insert({ year_month: analysisMonth, category_id: catId, amount, memo: name + '（固定費）' });
+  if (error) { toast('エラー: ' + error.message, false); return; }
+  toast(analysisMonth + 'に計上しました');
+  loadAnalysis();
+}
+
+async function deleteFixedCost(id) {
+  await sb.from('fixed_costs').delete().eq('id', id);
+  toast('削除しました');
+  loadFixedCosts();
+}
+
+// 取引手動追加
+async function addTransaction() {
+  const date = document.getElementById('add-date').value;
+  const desc = document.getElementById('add-desc').value;
+  const amount = parseInt(document.getElementById('add-amount').value);
+  const catId = parseInt(document.getElementById('add-cat').value);
+  if (!date || !amount || !catId) { toast('日付・金額・カテゴリを入力してください', false); return; }
+  const { error } = await sb.from('transactions').insert({ date, description: desc, amount, category_id: catId, source: 'manual' });
+  if (error) { toast('エラー: ' + error.message, false); return; }
+  toast('追加しました');
+  document.getElementById('add-date').value = '';
+  document.getElementById('add-desc').value = '';
+  document.getElementById('add-amount').value = '';
+  loadTransactions();
+}
+
+// 取引削除
+async function deleteTransaction(id) {
+  await sb.from('transactions').delete().eq('id', id);
+  toast('削除しました');
+  loadTransactions();
+}
+
 // 初期化
 (async () => {
   await loadCategories();
   await loadKeywordMaster();
   await loadDashboard();
   document.getElementById('filter-month').value = currentMonth;
+  // 分析タブのカテゴリ選択肢
+  const catSel = document.getElementById('analysis-cat-select');
+  if (catSel) categories.forEach(c => catSel.innerHTML += `<option value="${c.id}">${c.icon||''} ${c.name}</option>`);
+  const fixedCatSel = document.getElementById('fixed-cat');
+  if (fixedCatSel) categories.forEach(c => fixedCatSel.innerHTML += `<option value="${c.id}">${c.icon||''} ${c.name}</option>`);
+  const addCatSel = document.getElementById('add-cat');
+  if (addCatSel) categories.forEach(c => addCatSel.innerHTML += `<option value="${c.id}">${c.icon||''} ${c.name}</option>`);
+  // 固定費の未計上チェック
+  checkFixedCosts();
+  document.getElementById('analysis-month-display').textContent = analysisMonth;
 })();
+
+async function checkFixedCosts() {
+  const { data } = await sb.from('fixed_costs').select('*, categories(name)').eq('active', true);
+  if (!data || !data.length) return;
+  for (const f of data) {
+    const { data: existing } = await sb.from('manual_entries').select('id').eq('year_month', currentMonth).eq('category_id', f.category_id);
+    if (!existing || !existing.length) {
+      const msg = document.createElement('div');
+      msg.style.cssText = 'position:fixed;top:60px;right:16px;z-index:200;background:var(--surface);border:1px solid var(--accent);border-radius:8px;padding:12px 16px;font-size:13px;box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:280px;';
+      msg.innerHTML = `📌 固定費「${f.categories?.name} ¥${f.amount.toLocaleString()}」が今月未計上です。<br><button onclick="this.parentElement.remove();showPage('analysis',document.querySelector('.nav-tab:nth-child(6)'));" style="margin-top:8px;padding:4px 12px;border-radius:6px;background:var(--accent);color:#000;border:none;cursor:pointer;font-size:12px;">分析タブで計上する</button><button onclick="this.parentElement.remove();" style="margin:8px 0 0 8px;padding:4px 12px;border-radius:6px;background:none;border:1px solid var(--border);color:var(--text2);cursor:pointer;font-size:12px;">後で</button>`;
+      document.body.appendChild(msg);
+      break;
+    }
+  }
+}
 </script>
 </body>
 </html>
