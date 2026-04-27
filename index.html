@@ -681,13 +681,22 @@ function parseCSVLine(line) {
   return cols;
 }
 
-// CSVフォーマット自動判定
+// CSVフォーマット自動判定（dataStartも返す）
 function detectCSVFormat(lines) {
-  // 三井住友VISA: 1行目に日付データがある（ヘッダー行なし）
-  const firstCols = parseCSVLine(lines[0]);
-  if (firstCols[0] && firstCols[0].match(/\d{4}\/\d{2}\/\d{2}/)) return 'smbc';
-  // ANA JCB: ご利用日ヘッダー行がある
-  return 'anajcb';
+  // ANA JCB: ご利用日ヘッダー行を探す
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes('ご利用日') || lines[i].includes('利用日')) {
+      return { format: 'anajcb', dataStart: i + 1 };
+    }
+  }
+  // 三井住友VISA: 先頭5行以内に日付データがある行を探す
+  for (let i = 0; i < Math.min(5, lines.length); i++) {
+    const cols = parseCSVLine(lines[i]);
+    if (cols[0] && cols[0].match(/\d{4}\/\d{2}\/\d{2}/)) {
+      return { format: 'smbc', dataStart: i };
+    }
+  }
+  return { format: 'anajcb', dataStart: 0 };
 }
 
 async function handleCSV(input) {
@@ -700,18 +709,7 @@ async function handleCSV(input) {
   const text = decoder.decode(buffer);
   const lines = text.split('\n').map(l => l.trim()).filter(l => l);
 
-  const format = detectCSVFormat(lines);
-  let dataStart = 0;
-
-  if (format === 'anajcb') {
-    // ANA JCB: ご利用日ヘッダー行を探す
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes('ご利用日') || lines[i].includes('利用日')) { dataStart = i + 1; break; }
-    }
-  } else {
-    // 三井住友VISA: 1行目からデータ
-    dataStart = 0;
-  }
+  const { format, dataStart } = detectCSVFormat(lines);
 
   previewData = [];
   for (let i = dataStart; i < lines.length; i++) {
