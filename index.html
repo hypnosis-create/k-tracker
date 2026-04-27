@@ -553,7 +553,7 @@ async function loadDashboard() {
   const { data: txs } = await sb.from('transactions').select('*, categories(name,icon)').gte('date', start).lte('date', end);
   const { data: mans } = await sb.from('manual_entries').select('*, categories(name,icon)').eq('year_month', currentMonth);
   const all = [...(txs||[]), ...(mans||[])];
-  const total = all.reduce((s, r) => s + r.amount, 0);
+  const total = allFiltered.reduce((s, r) => s + r.amount, 0);
 
   // 前月
   const prev = new Date(y, m-2, 1);
@@ -572,9 +572,10 @@ async function loadDashboard() {
     el.className = 'kpi-sub ' + (diff > 0 ? 'kpi-up' : 'kpi-dn');
   }
 
-  const food = all.filter(r => r.categories && (r.categories.name.includes('食費'))).reduce((s,r) => s+r.amount, 0);
-  const util = all.filter(r => r.categories && (r.categories.name === '電気' || r.categories.name === '水道')).reduce((s,r) => s+r.amount, 0);
-  const unk = all.filter(r => r.categories && r.categories.name === '未分類');
+  const allFiltered = all.filter(r => r.categories?.name !== '除外' && r.amount > 0);
+  const food = allFiltered.filter(r => r.categories && (r.categories.name.includes('食費'))).reduce((s,r) => s+r.amount, 0);
+  const util = allFiltered.filter(r => r.categories && (r.categories.name === '電気' || r.categories.name === '水道')).reduce((s,r) => s+r.amount, 0);
+  const unk = allFiltered.filter(r => r.categories && r.categories.name === '未分類');
   document.getElementById('kpi-food').textContent = '¥' + food.toLocaleString();
   document.getElementById('kpi-utility').textContent = '¥' + util.toLocaleString();
   document.getElementById('kpi-unknown').textContent = '¥' + unk.reduce((s,r)=>s+r.amount,0).toLocaleString();
@@ -582,7 +583,7 @@ async function loadDashboard() {
 
   // カテゴリ内訳
   const catMap = {};
-  all.forEach(r => {
+  allFiltered.forEach(r => {
     const name = r.categories?.name || '未分類';
     const icon = r.categories?.icon || '❓';
     catMap[name] = catMap[name] || { amount: 0, icon };
@@ -667,6 +668,28 @@ async function loadDashboard() {
 }
 
 // CSV処理
+// CSV列をパース（クォート対応）
+function parseCSVLine(line) {
+  const cols = [];
+  let cur = '', inQ = false;
+  for (const ch of line) {
+    if (ch === '"') { inQ = !inQ; }
+    else if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+    else { cur += ch; }
+  }
+  cols.push(cur.trim());
+  return cols;
+}
+
+// CSVフォーマット自動判定
+function detectCSVFormat(lines) {
+  // 三井住友VISA: 1行目に日付データがある（ヘッダー行なし）
+  const firstCols = parseCSVLine(lines[0]);
+  if (firstCols[0] && firstCols[0].match(/\d{4}\/\d{2}\/\d{2}/)) return 'smbc';
+  // ANA JCB: ご利用日ヘッダー行がある
+  return 'anajcb';
+}
+
 async function handleCSV(input) {
   const file = input.files[0];
   if (!file) return;
@@ -677,35 +700,44 @@ async function handleCSV(input) {
   const text = decoder.decode(buffer);
   const lines = text.split('\n').map(l => l.trim()).filter(l => l);
 
-  // ヘッダー行を探す（6行目付近）
+  const format = detectCSVFormat(lines);
   let dataStart = 0;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes('ご利用日') || lines[i].includes('利用日')) { dataStart = i + 1; break; }
+
+  if (format === 'anajcb') {
+    // ANA JCB: ご利用日ヘッダー行を探す
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes('ご利用日') || lines[i].includes('利用日')) { dataStart = i + 1; break; }
+    }
+  } else {
+    // 三井住友VISA: 1行目からデータ
+    dataStart = 0;
   }
 
   previewData = [];
   for (let i = dataStart; i < lines.length; i++) {
-    // クォート内カンマを保持しながらCSV解析
-    const cols = [];
-    let cur = '', inQ = false;
-    for (const ch of lines[i]) {
-      if (ch === '"') { inQ = !inQ; }
-      else if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
-      else { cur += ch; }
-    }
-    cols.push(cur.trim());
+    const cols = parseCSVLine(lines[i]);
 
-    if (cols.length < 5) continue;
-    // ANA JCB: 0=ご利用者 1=カテゴリ 2=ご利用日 3=ご利用先 4=ご利用金額
-    const date = cols[2];
-    const desc = cols[3];
-    const amtStr = cols[4];
-    const amt = parseInt(amtStr.replace(/[^\d]/g,''));
-    if (!amt || isNaN(amt) || amt <= 0) continue;
-    if (!date.match(/\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/)) continue;
+    let date, desc, amt;
+
+    if (format === 'anajcb') {
+      if (cols.length < 5) continue;
+      // ANA JCB: 0=ご利用者 1=カテゴリ 2=ご利用日 3=ご利用先 4=ご利用金額
+      date = cols[2];
+      desc = cols[3];
+      const amtStr = cols[4];
+      amt = parseInt(amtStr.replace(/[^\d\-]/g,''));
+    } else {
+      // 三井住友VISA: 0=日付 1=利用先 2=金額
+      if (cols.length < 3) continue;
+      date = cols[0];
+      desc = cols[1];
+      amt = parseInt((cols[2]||'').replace(/[^\d\-]/g,''));
+    }
+
+    if (isNaN(amt) || amt === 0) continue;
+    if (!date || !date.match(/\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/)) continue;
 
     let dateStr = date.trim().replace(/\//g,'-');
-
     const catId = detectCategory(desc);
     previewData.push({ date: dateStr, description: desc, amount: amt, category_id: catId });
   }
