@@ -553,7 +553,6 @@ async function loadDashboard() {
   const { data: txs } = await sb.from('transactions').select('*, categories(name,icon)').gte('date', start).lte('date', end);
   const { data: mans } = await sb.from('manual_entries').select('*, categories(name,icon)').eq('year_month', currentMonth);
   const all = [...(txs||[]), ...(mans||[])];
-  const total = allFiltered.reduce((s, r) => s + r.amount, 0);
 
   // 前月
   const prev = new Date(y, m-2, 1);
@@ -564,6 +563,9 @@ async function loadDashboard() {
   const { data: pmans } = await sb.from('manual_entries').select('amount').eq('year_month', pm);
   const prevTotal = [...(ptxs||[]), ...(pmans||[])].reduce((s, r) => s + r.amount, 0);
 
+  const allFiltered = all.filter(r => r.categories?.name !== '除外' && r.amount > 0);
+  const total = allFiltered.reduce((s, r) => s + r.amount, 0);
+
   document.getElementById('kpi-total').textContent = '¥' + total.toLocaleString();
   if (prevTotal > 0) {
     const diff = Math.round((total - prevTotal) / prevTotal * 100);
@@ -571,8 +573,6 @@ async function loadDashboard() {
     el.textContent = `前月比 ${diff > 0 ? '+' : ''}${diff}%`;
     el.className = 'kpi-sub ' + (diff > 0 ? 'kpi-up' : 'kpi-dn');
   }
-
-  const allFiltered = all.filter(r => r.categories?.name !== '除外' && r.amount > 0);
   const food = allFiltered.filter(r => r.categories && (r.categories.name.includes('食費'))).reduce((s,r) => s+r.amount, 0);
   const util = allFiltered.filter(r => r.categories && (r.categories.name === '電気' || r.categories.name === '水道')).reduce((s,r) => s+r.amount, 0);
   const unk = allFiltered.filter(r => r.categories && r.categories.name === '未分類');
